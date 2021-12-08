@@ -1,0 +1,218 @@
+import cv2 as cv
+import numpy as np
+import math
+from matplotlib import pyplot as plt
+from pylab import mpl
+mpl.rcParams['font.sans-serif'] = ['STZhongsong']    # 指定默认字体：解决plot不能显示中文问题
+
+##########################1. 图像反转
+def Opposite(img_gray):
+    img_opposite = img_gray.copy()  #将原图像赋给一个新的变量，便于后续处理
+    img_gray = np.array(img_gray)   #将图像转化为二维数组
+    img_flatten = img_gray.flatten()    #二维数组降维到一维，便于提取最大最小灰度值
+    value_max = np.max(img_flatten)
+
+    for i in range(height):
+        for j in range(width):
+            img_opposite[i, j] = value_max-1-img_opposite[i, j]
+    return img_opposite
+
+##########################2. 对数变换
+def Tranform_log(img_gray, c):
+    img_new = np.zeros_like(img_gray, dtype= np.float32)    #创建同尺寸的二维 0-矩阵
+    for i in range(height):     #遍历全图
+        for j in range(width):
+            img_new[i,j] = c*math.log(1+img_gray[i,j])      #像素值对数变换
+    cv.normalize(img_new, img_new, 0, 255, cv.NORM_MINMAX)  #图像归一化到0到255
+    img_new = cv.convertScaleAbs(img_new)                   #图像取绝对
+    return img_new
+
+##########################3. 幂次变换
+def Transform_MI(img_gray, c, l):
+    img_new = np.zeros((height, width), dtype= np.float32)  #创建同尺寸的二维 0-矩阵
+    for i in range(height):     #遍历全图
+        for j in range(width):
+            value = img_gray[i, j]
+            img_new[i, j] = c * value ** l       #像素值幂次变换
+
+    cv.normalize(img_new, img_new, 0, 255, cv.NORM_MINMAX)
+    img_new = cv.convertScaleAbs(img_new)
+    return img_new
+
+##########################4. 分段图像变换
+def Transform_FenDuan(img_gray, point_x, point_y):
+    point_all = img_gray.flatten()
+    point_max = np.max(point_all)
+    y = [[] for _ in range(4)]
+
+#1  画出分段函数图像
+    plt.subplot(222)
+    x0 = np.linspace(0, point_x[0], point_x[0])     #给出分段函数图中该段中 X的范围，并规定点的数量
+    for v in x0:
+        y[0].append(point_y[0] / point_x[0] * v)    #计算出对应 Y的范围
+    plt.plot(x0, y[0], 'b')                         #画出该段函数图像
+#2
+    x1 = np.linspace(point_x[0], point_x[1], point_x[1]-point_x[0])
+    for v in x1:
+        y[1].append((point_y[0]-point_y[1])/(point_x[0]-point_x[1])*(v-point_x[0])+point_y[0])
+    plt.plot(x1, y[1], 'b')
+#3
+    x2 = np.linspace(point_x[1], point_max, point_max-point_x[1])
+    for v in x2:
+        y[2].append((point_y[1]-point_max)/(point_x[1]-point_max)*(v-point_x[1])+point_y[1])
+    plt.plot(x2, y[2], 'b')
+#4
+    plt.subplot(221)
+    x3 = np.linspace(0, point_max, point_max)       #画出原函数图像
+    for v in x3:
+        y[3].append(v)
+    plt.plot(x3, y[3], 'r')
+
+    img_new = np.zeros((height, width), dtype= np.float32)
+    for i in range(height):
+        for j in range(width):
+            v = img_gray[i,j]
+            if v < point_x[0]:
+                img_new[i,j] = point_y[0] / point_x[0] * v
+            elif v > point_x[1]:
+                img_new[i,j] = (point_y[1]-point_max)/(point_x[1]-point_max)*(v-point_x[1])+point_y[1]
+            else:
+                img_new[i,j] = (point_y[0]-point_y[1])/(point_x[0]-point_x[1])*(v-point_x[0])+point_y[0]
+
+    img_new = cv.convertScaleAbs(img_new)
+    return img_new
+
+##########################5. 直方图均衡化
+def Hist(img_gray):
+    plt.subplot(221), plt.hist(img_gray.flatten(), 256, [0, 256])   #获取原图直方图
+    img_new = cv.equalizeHist(img_gray)                             #图像灰度直方图均衡化
+    plt.subplot(222), plt.hist(img_new.flatten(), 256, [0, 256], color='r')
+    return img_new
+
+##########################5. 直方图匹配
+def Hist_Match(img_gray):
+    img_ref = cv.imread("room.jpg")                             #读取图像
+    img_ref_gray = cv.cvtColor(img_ref, cv.COLOR_BGR2GRAY)      #图像转化为灰度图
+    height_ref, width_ref = img_ref_gray.shape                  #获取图像尺寸
+    img_ref_gray = cv.resize(img_ref_gray, (int(width_ref/2), int(height_ref/2)))
+    img_new = np.zeros((height, width), dtype= np.float32)
+
+    hist_img, _ = np.histogram(img_gray, 256)       #获取图像直方图
+    hist_ref, _ = np.histogram(img_ref_gray, 256)
+    cdf_img = np.cumsum(hist_img)       #依次行叠加
+    cdf_ref = np.cumsum(hist_ref)
+
+    for j in range(256):
+        tmp = abs(cdf_img[j] - cdf_ref)     #找到和参考图像当前灰度像素数量累加值最接近的与原图像灰度像素数量累加值
+        tmp = tmp.tolist()
+        idx = tmp.index(min(tmp))
+        img_new[img == j] = idx             #将参考图像中确定的灰度值赋值给原图，完成匹配
+
+    plt.subplot(231), plt.hist(img_gray.flatten(), 256, [0, 256])
+    plt.title("Image")
+    plt.subplot(232), plt.hist(img_ref_gray.flatten(), 256, [0, 256], color='g')
+    plt.title("Reference")
+    plt.subplot(233), plt.hist(img_new.flatten(), 256, [0, 256], color='r')
+    plt.title("Match")
+    return img_ref_gray, img_new
+
+if __name__ == "__main__":
+
+    img = cv.imread("boat.jpg")
+    height = int(img.shape[0]/2 )
+    width = int(img.shape[1]/2)
+    img = cv.resize(img, (width, height))
+    img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    print("本次内容:\n1. 图像变换\n2. 分段图像变换\n3. 直方图均衡化\n4. 直方图匹配\n")
+    input("Enter回车开始：")
+
+    # #图像反转
+    print("1-1. 图像变换：图像反转")
+    print("运算中...")
+    image_opposite = Opposite(img)
+    plt.figure("图像反转")
+    plt.subplot(121), plt.imshow(img, cmap='gray')
+    plt.title("原图"), plt.axis('off')
+    plt.subplot(122), plt.imshow(image_opposite, cmap='gray')
+    plt.title("图像反转"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    # #对数变换
+    print("1-2. 图像变换：对数变换")
+    print("运算中...")
+    image_log_1 = Tranform_log(img, c=0.5)
+    image_log_10 = Tranform_log(img, c=10)
+    image_log_50 = Tranform_log(img, c=50)
+    plt.figure("对数变换")
+    plt.subplot(221), plt.imshow(img, cmap='gray')
+    plt.title("原图"), plt.axis('off')
+    plt.subplot(222), plt.imshow(image_log_1, cmap='gray')
+    plt.title("对数变换(c=0.5)"), plt.axis('off')
+    plt.subplot(223), plt.imshow(image_log_10, cmap='gray')
+    plt.title("对数变换(c=10)"), plt.axis('off')
+    plt.subplot(224), plt.imshow(image_log_50, cmap='gray')
+    plt.title("对数变换(c=50)"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    # #幂次变换
+    print("1-3. 图像变换：幂次变换")
+    print("运算中...")
+    image_MI_1 = Transform_MI(img, c=1, l=0.5)
+    image_MI_2 = Transform_MI(img, c=1, l=2)
+    image_MI_10 = Transform_MI(img, c=1, l=10)
+    plt.figure("幂次变换")
+    plt.subplot(221), plt.imshow(img, cmap='gray')
+    plt.title("原图"), plt.axis('off')
+    plt.subplot(222), plt.imshow(image_MI_1, cmap='gray')
+    plt.title("幂次变换(l=0.5)"), plt.axis('off')
+    plt.subplot(223), plt.imshow(image_MI_2, cmap='gray')
+    plt.title("幂次变换(l=2)"), plt.axis('off')
+    plt.subplot(224), plt.imshow(image_MI_10, cmap='gray')
+    plt.title("幂次变换(l=10)"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    # 分段图像变换
+    print("2. 分段图像变换")
+    print("运算中...")
+    point_x = np.array([90, 150])
+    point_y = np.array([50, 200])
+    plt.figure("分段图像变换")
+    image_FenDuan = Transform_FenDuan(img, point_x, point_y)
+    plt.subplot(223), plt.imshow(img, cmap='gray')
+    plt.title("原图"), plt.axis('off')
+    plt.subplot(224), plt.imshow(image_FenDuan, cmap='gray')
+    plt.title("分段图像变换"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    # 直方图均衡化
+    print("3. 直方图均衡化")
+    print("运算中...")
+    plt.figure("直方图均衡化")
+    image_Hist = Hist(img)
+    plt.subplot(223), plt.imshow(img, cmap='gray')
+    plt.title("原图"), plt.axis('off')
+    plt.subplot(224), plt.imshow(image_Hist, cmap='gray')
+    plt.title("直方图均衡化"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    # 5.直方图匹配
+    print("4. 直方图匹配")
+    print("运算中...")
+    plt.figure("直方图匹配")
+    image_Hist_ref, image_Hist_Match = Hist_Match(img)
+    plt.subplot(234), plt.imshow(img, cmap='gray')
+    plt.title("原图"), plt.axis('off')
+    plt.subplot(235), plt.imshow(image_Hist_ref, cmap='gray')
+    plt.title("待匹配图像"), plt.axis('off')
+    plt.subplot(236), plt.imshow(image_Hist_Match, cmap='gray')
+    plt.title("图像直方图匹配"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    print("finish!")
+    cv.waitKey()

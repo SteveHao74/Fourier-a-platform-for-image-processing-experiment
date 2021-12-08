@@ -1,0 +1,228 @@
+from matplotlib import pyplot as plt
+import numpy as np
+from numpy import fft
+import cv2 as cv
+from pylab import mpl
+import os
+mpl.rcParams['font.sans-serif'] = ['STZhongsong']    # 指定默认字体：解决plot不能显示中文问题
+
+# 构建带通带阻滤波器
+def kernel_band(img,D0,W,n,ftype):
+    kernel = np.ones(img.shape, dtype=np.float32)
+    r,c = img.shape
+    for i in np.arange(r):
+        for j in np.arange(c):
+            distance = np.sqrt((i - r / 2) ** 2 + (j - c / 2) ** 2)
+            #高斯带阻滤波
+            if ftype == "gaussian_bandstop":
+                kernel[i, j] = -np.exp(-0.5 * (((distance ** 2 - D0**2) / (distance *W + 1.0e-5))**2))
+            # 高斯带通滤波
+            elif ftype == "gaussian_bandpass":
+                kernel[i, j] = 1 - np.exp(-0.5 * (((distance ** 2 - D0**2) / (distance *W + 1.0e-5))**2))
+            # 巴特沃斯带阻滤波
+            elif ftype == "Butterworth_Stop":
+                kernel[i, j] = kernel[i, j] = 1 / (1 + (distance * W / (distance ** 2 - D0 ** 2)) ** (2 * n))
+    return kernel
+
+# 构建陷波滤波器
+def kernel_notch(img,D0,n,ftype):
+    kernel = np.ones(img.shape, dtype=np.float32)
+    r, c = img.shape
+    u = np.array([-42, 40, 40, -40])
+    v = np.array([28, 30, -30, -30])
+    distance_1 = np.array([0, 0, 0, 0])
+    distance_2 = np.array([0, 0, 0, 0])
+
+    for i in np.arange(r):
+        for j in np.arange(c):
+            for k in range(len(u)):
+                distance_1[k] = np.sqrt((i - r / 2 + u[k]) ** 2 + (j - c / 2 + v[k]) ** 2)
+                distance_2[k] = np.sqrt((i - r / 2 - u[k]) ** 2 + (j - c / 2 - v[k]) ** 2)
+                #巴特沃斯陷波滤波
+                if ftype == "Butterworth_notch" or "Butterworth_Pass_notch":
+                    kernel[i, j] *= 1 / ((1 + (D0 / distance_1[k]) ** (2 * n)) * (1 + (D0 / distance_1[k]) ** (2 * n)))
+                # 高斯陷波滤波
+                elif ftype == "gaussian_notch":
+                    kernel[i, j] *= 1 - np.exp((distance_1 * distance_2) / (D0 ** 2) * (-0.5))
+    if  ftype == "Butterworth_Pass_notch":
+        kernel = 1- kernel
+    return kernel
+
+def Filter(img,D0,n,ftype,W):
+    assert img.ndim == 2    #执行判断：当图像为两通道时，执行以下语句
+    if ftype == "gaussian_bandstop" or ftype == "gaussian_bandpass" or ftype == "Butterworth_Stop":
+        kernel = kernel_band(img,D0,W,n,ftype)
+    elif ftype == "gaussian_notch" or ftype == "Butterworth_notch" or "Butterworth_Pass_notch":
+        kernel = kernel_notch(img, D0, n, ftype)
+    elif ftype == "None":
+        kernel = 1
+
+    gray = np.float64(img)
+    gray_fft = np.fft.fft2(gray)      #图像傅里叶变换
+    gray_fftshift = np.fft.fftshift(gray_fft)
+    dst_filtered = kernel * gray_fftshift      #图像频域滤波
+    dst_ifftshift = np.fft.ifftshift(dst_filtered)      #图像傅里叶逆变换
+    dst_ifft = np.fft.ifft2(dst_ifftshift)
+    dst = np.abs(np.real(dst_ifft))     #提取矩阵实部并取绝对值
+    dst = np.clip(dst,0,255)            #规定矩阵元素的上下界
+    return gray_fftshift, dst_filtered, np.uint8(dst)
+
+# 构建最佳陷波滤波器
+def Filter_Best_notch(img, img_notch, a, b):
+    image = img.astype(np.float32)
+    image_notch = img_notch.astype(np.float32)
+    a_half = int(a/2)
+    b_half = int(b/2)
+    image = cv.copyMakeBorder(image, a_half, a_half, b_half, b_half, cv.BORDER_REPLICATE)       #扩充图像边界
+    image_notch = cv.copyMakeBorder(image_notch, a_half, a_half, b_half, b_half, cv.BORDER_REPLICATE)
+
+    image_new = np.zeros(image.shape, np.float32)   #定义同尺寸的0-矩阵
+    rows = image.shape[0]
+    cols = image.shape[1]
+
+    #最佳陷波滤波算法
+    for i in range(a_half, rows-a_half-1):
+        for j in range(b_half, cols-b_half-1):
+            value_ave = np.average(image[i-a_half: i+a_half, j-b_half: j+b_half])
+            value_notch_ave = np.average(image_notch[i-a_half: i+a_half, j-b_half: j+b_half])
+            image_multiply = np.multiply(image_notch[i-a_half: i+a_half, j-b_half: j+b_half], image[i-a_half: i+a_half, j-b_half: j+b_half])
+            value_multiply_ave = np.average(image_multiply)
+            image_power = image_notch[i-a_half: i+a_half, j-b_half: j+b_half]**2
+            value_power_ave = np.average(image_power)
+            w = (value_multiply_ave - value_ave*value_notch_ave) / (value_power_ave - value_notch_ave**2)
+            image_new[i, j] = image[i, j] - w*image_notch[i, j]
+    image_new = np.abs(image_new)
+    image_new = np.clip(image_new,0,255)
+    image_new = image_new[a_half: rows-a_half-1, b_half: cols-b_half-1]
+    return np.uint8(image_new)
+
+'''
+gaussian_bandstop
+gaussian_bandpass
+Butterworth_Stop
+gaussian_notch
+Butterworth_notch
+Butterworth_Pass_notch
+'''
+if __name__ == "__main__":
+    img = cv.imread("2.jpg")    #读取图像
+    img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)    #转化为灰度图
+    height = int(img.shape[0]/1)
+    width = int(img.shape[1]/1)
+    img = cv.resize(img, (width, height))
+
+    print("本次内容:\n1. 频域滤波：高斯带阻滤波 + 高斯带通滤波 + 巴特沃斯带阻滤波 + 巴特沃斯陷波滤波 + 最佳陷波滤波\n")
+    input("Enter回车开始：")
+
+    #周期噪声图像的傅里叶变换
+    print("1. 周期噪声图像")
+    print("运算中...")
+    gray_fftshift, _, _ = Filter(img, D0=2, n=2, W=25, ftype="None")
+    gray_fftshift = np.log(np.abs(gray_fftshift))
+    plt.figure("周期噪声图像")
+    plt.subplot(121), plt.imshow(img, cmap='gray')
+    plt.title("周期噪声图像"), plt.axis('off')
+    plt.subplot(122), plt.imshow(gray_fftshift, cmap='gray')
+    plt.title("傅里叶变换)"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    #高斯带阻滤波
+    print("2. 高斯带阻滤波")
+    print("运算中...")
+    _, _, img_gaussian_bandstop_2 = Filter(img, D0=2, n=2, W=25, ftype="gaussian_bandstop")     #不同参数下的高斯带阻滤波
+    _, _, img_gaussian_bandstop_5 = Filter(img, D0=5, n=2, W=25, ftype="gaussian_bandstop")
+    _, _, img_gaussian_bandstop_10 = Filter(img, D0=10, n=2, W=25, ftype="gaussian_bandstop")
+    plt.figure("高斯带阻滤波")
+    plt.subplot(221), plt.imshow(img, cmap='gray')
+    plt.title("周期噪声图像"), plt.axis('off')
+    plt.subplot(222), plt.imshow(img_gaussian_bandstop_2, cmap='gray')
+    plt.title("高斯带阻滤波(D=2)"), plt.axis('off')
+    plt.subplot(223), plt.imshow(img_gaussian_bandstop_5, cmap='gray')
+    plt.title("高斯带阻滤波(D=5)"), plt.axis('off')
+    plt.subplot(224), plt.imshow(img_gaussian_bandstop_10, cmap='gray')
+    plt.title("高斯带阻滤波(D=10)"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    # 巴特沃斯带阻滤波
+    print("3. 巴特沃斯带阻滤波")
+    print("运算中...")
+    _, _, img_Butterworth_Stop_50 = Filter(img, D0=50, n=2,W=100,ftype="Butterworth_Stop")      #不同参数下的巴特沃斯带阻滤波
+    _, _, img_Butterworth_Stop_65 = Filter(img, D0=65, n=2, W=100, ftype="Butterworth_Stop")
+    _, _, img_Butterworth_Stop_80 = Filter(img, D0=80, n=2,W=100,ftype="Butterworth_Stop")
+    plt.figure("巴特沃斯带阻滤波")
+    plt.subplot(221), plt.imshow(img, cmap='gray')
+    plt.title("周期噪声图像"), plt.axis('off')
+    plt.subplot(222), plt.imshow(img_Butterworth_Stop_50, cmap='gray')
+    plt.title("巴特沃斯带阻滤波(D=50)"), plt.axis('off')
+    plt.subplot(223), plt.imshow(img_Butterworth_Stop_65, cmap='gray')
+    plt.title("巴特沃斯带阻滤波(D=65)"), plt.axis('off')
+    plt.subplot(224), plt.imshow(img_Butterworth_Stop_80, cmap='gray')
+    plt.title("巴特沃斯带阻滤波(D=80)"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    #高斯带通滤波
+    print("4. 高斯带通滤波")
+    print("运算中...")
+    _, _, img_gaussian_bandpass_50 = Filter(img, D0=50, n=2,W=100,ftype="gaussian_bandpass")    #不同参数下的高斯带通滤波
+    _, _, img_gaussian_bandpass_60 = Filter(img, D0=60, n=2,W=100,ftype="gaussian_bandpass")
+    _, _, img_gaussian_bandpass_70 = Filter(img, D0=70, n=2,W=100,ftype="gaussian_bandpass")
+    plt.figure("高斯带通滤波")
+    plt.subplot(221), plt.imshow(img, cmap='gray')
+    plt.title("周期噪声图像"), plt.axis('off')
+    plt.subplot(222), plt.imshow(img_Butterworth_Stop_50, cmap='gray')
+    plt.title("高斯带通滤波(D=50)"), plt.axis('off')
+    plt.subplot(223), plt.imshow(img_Butterworth_Stop_65, cmap='gray')
+    plt.title("高斯带通滤波(D=60)"), plt.axis('off')
+    plt.subplot(224), plt.imshow(img_Butterworth_Stop_80, cmap='gray')
+    plt.title("高斯带通滤波(D=70)"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    # 巴特沃斯陷波滤波
+    print("5. 陷波滤波")
+    print("运算中...")
+    _, _, img_Butterworth_notch_10 = Filter(img, D0=10, n=1, W=100, ftype="Butterworth_notch")      #不同参数下的巴特沃斯陷波滤波
+    gray_fftshift, dst_filtered, img_Butterworth_notch_20 = Filter(img, D0=20, n=2, W=100, ftype="Butterworth_notch")
+    _, _, img_Butterworth_notch_40 = Filter(img, D0=40, n=2, W=100, ftype="Butterworth_notch")
+    gray_fftshift = np.log(np.abs(gray_fftshift))
+    dst_filtered = np.log(np.abs(dst_filtered))
+    plt.figure("巴特沃斯陷波滤波")
+    plt.subplot(231), plt.imshow(img, cmap='gray')
+    plt.title("原图"), plt.axis('off')
+    plt.subplot(232), plt.imshow(gray_fftshift, cmap='gray')
+    plt.title("原图傅里叶变换"), plt.axis('off')
+    plt.subplot(233), plt.imshow(dst_filtered, cmap='gray')
+    plt.title("巴特沃斯陷波滤波"), plt.axis('off')
+    plt.subplot(234), plt.imshow(img_Butterworth_notch_10, cmap='gray')
+    plt.title("巴特沃斯陷波滤波(D=10)"), plt.axis('off')
+    plt.subplot(235), plt.imshow(img_Butterworth_notch_20, cmap='gray')
+    plt.title("巴特沃斯陷波滤波(D=20)"), plt.axis('off')
+    plt.subplot(236), plt.imshow(img_Butterworth_notch_40, cmap='gray')
+    plt.title("巴特沃斯陷波滤波(D=40)"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    #
+    print("6. 最佳陷波滤波")
+    print("运算中...")
+    img_best_notch = []
+    path = "best_notch/"
+    dictionary = os.listdir(path)
+    for d in dictionary:
+        if d.endswith(".jpg"):
+            img = cv.imread(os.path.join(path, d))
+            img_best_notch.append(cv.cvtColor(img, cv.COLOR_BGR2GRAY))
+    plt.figure("最佳陷波滤波")
+    plt.subplot(221), plt.imshow(img_best_notch[3], cmap='gray')
+    plt.title("主频陷波滤波"), plt.axis('off')
+    plt.subplot(222), plt.imshow(img_best_notch[0], cmap='gray')
+    plt.title("最佳陷波滤波(a=b=15)"), plt.axis('off')
+    plt.subplot(223), plt.imshow(img_best_notch[1], cmap='gray')
+    plt.title("最佳陷波滤波(a=b=23)"), plt.axis('off')
+    plt.subplot(224), plt.imshow(img_best_notch[2], cmap='gray')
+    plt.title("最佳陷波滤波(a=b=5)"), plt.axis('off')
+    plt.show()
+    print("完成")

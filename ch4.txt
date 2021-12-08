@@ -1,0 +1,557 @@
+#第四章 频域图像增强
+
+#4.1 傅里叶变换
+
+import numpy as np
+import cv2
+from matplotlib import pyplot as plt
+
+#读取图像
+img = cv2.imread('4.1.jpg', 0)
+
+#傅里叶变换
+dft = cv2.dft(np.float32(img), flags = cv2.DFT_COMPLEX_OUTPUT)
+
+#将频谱低频从左上角移动至中心位置
+dft_shift = np.fft.fftshift(dft)
+
+#频谱图像双通道复数转换为0-255区间,乘以20使得结果更大
+result = 20*np.log(cv2.magnitude(dft_shift[:,:,0], dft_shift[:,:,1]))
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10, 5))  # width * height
+plt.subplot(121), plt.imshow(img, cmap = 'gray')
+plt.title('原始图像'), plt.xticks([]), plt.yticks([])
+plt.subplot(122), plt.imshow(result, cmap = 'gray')
+plt.title('傅里叶变换'), plt.xticks([]), plt.yticks([])
+plt.show()
+
+
+#4.3.1理想低通滤波器
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+img = cv2.imread('4.2.jpg',0) #直接读为灰度图像
+f = np.fft.fft2(img)
+fshift = np.fft.fftshift(f)
+s1 = np.log(np.abs(fshift))
+
+def low_pass_kernel(img,cut_off):
+    assert img.ndim == 2
+    r,c = img.shape[1],img.shape[0]
+    u = np.arange(r)
+    v = np.arange(c)
+    u, v = np.meshgrid(u, v)
+    low_pass = np.sqrt( (u-r/2)**2 + (v-c/2)**2 )
+    low_pass[low_pass <= cut_off] = 1
+    low_pass[low_pass >= cut_off] = 0
+    return low_pass
+
+def ideal_low_pass_filter(img,d):
+    assert img.ndim == 2
+    M,N = img.shape[0],img.shape[1]
+    kernel = low_pass_kernel(img,d)
+    gray = img.copy()
+    gray = np.float64(gray)
+    gray_fft = np.fft.fft2(gray)
+    gray_fftshift = np.fft.fftshift(gray_fft)
+    dst = np.zeros_like(gray_fftshift)
+    dst_filtered = kernel * gray_fftshift
+    dst_ifftshift = np.fft.ifftshift(dst_filtered)
+    dst_ifft = np.fft.ifft2(dst_ifftshift)
+    dst = np.abs(np.real(dst_ifft))
+    dst = np.clip(dst,0,255)
+    return np.uint8(dst)
+
+img_d1 = ideal_low_pass_filter(img,5)
+img_d2 = ideal_low_pass_filter(img,15)
+img_d3 = ideal_low_pass_filter(img,30)
+img_d4 = ideal_low_pass_filter(img,80)
+img_d5 = ideal_low_pass_filter(img,230)
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10, 5))  # width * height
+plt.subplot(231),plt.axis("off")
+plt.imshow(img,cmap="gray"),plt.title('原始图像')
+plt.subplot(232),plt.axis("off")
+plt.imshow(img_d1,cmap="gray"),plt.title('理想低通 D=5')
+plt.subplot(233),plt.axis("off")
+plt.title('理想低通  D=15'),plt.imshow(img_d2,cmap="gray")
+plt.subplot(234),plt.axis("off")
+plt.title("理想低通  D=30"),plt.imshow(img_d3,cmap="gray")
+plt.subplot(235),plt.axis("off")
+plt.title("理想低通  D=80"),plt.imshow(img_d4,cmap="gray")
+plt.subplot(236),plt.axis("off")
+plt.title("理想低通  D=230 "),plt.imshow(img_d5,cmap="gray")
+plt.show()
+
+
+#4.3.2 巴特沃斯低通滤波器
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+img = cv2.imread('4.2.jpg',0) #直接读为灰度图像
+f = np.fft.fft2(img)
+fshift = np.fft.fftshift(f)
+
+def butterworth_low_pass_kernel(img,cut_off,butterworth_order=2):
+    assert img.ndim == 2
+    r,c = img.shape[1],img.shape[0]
+    u = np.arange(r)
+    v = np.arange(c)
+    u, v = np.meshgrid(u, v)
+    low_pass = np.sqrt( (u-r/2)**2 + (v-c/2)**2 )
+    denom = 1.0 + (low_pass / cut_off)**(2 * butterworth_order)
+    low_pass = 1.0 / denom
+    return low_pass
+
+def butterworth_low_pass(src,d,n):
+    assert src.ndim == 2
+    kernel = butterworth_low_pass_kernel(src,d,n)
+    gray = np.float64(src)
+    gray_fft = np.fft.fft2(gray)
+    gray_fftshift = np.fft.fftshift(gray_fft)
+    dst = np.zeros_like(gray_fftshift)
+    dst_filtered = kernel * gray_fftshift
+    dst_ifftshift = np.fft.ifftshift(dst_filtered)
+    dst_ifft = np.fft.ifft2(dst_ifftshift)
+    dst = np.abs(np.real(dst_ifft))
+    dst = np.clip(dst,0,255)
+    return np.uint8(dst)
+
+butter_5_2 = butterworth_low_pass(img,5,2)
+butter_15_2 = butterworth_low_pass(img,15,2)
+butter_30_2 = butterworth_low_pass(img,30,2)
+butter_80_2 = butterworth_low_pass(img,80,2)
+butter_230_2 = butterworth_low_pass(img,230,2)
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10, 5))  # width * height
+plt.subplot(231),plt.imshow(img,cmap="gray")
+plt.title("原始图像"),plt.axis("off")
+plt.subplot(232),plt.imshow(butter_5_2,cmap="gray")
+plt.title("巴特沃斯低通,D=5,n=2"),plt.axis("off")
+plt.subplot(233),plt.imshow(butter_15_2,cmap="gray")
+plt.title("巴特沃斯低通,D=15,n=2"),plt.axis("off")
+plt.subplot(234),plt.imshow(butter_30_2,cmap="gray")
+plt.title("巴特沃斯低通,D=30,n=2"),plt.axis("off")
+plt.subplot(235),plt.imshow(butter_80_2,cmap="gray")
+plt.title("巴特沃斯低通,D=80,n=2"),plt.axis("off")
+plt.subplot(236),plt.imshow(butter_230_2,cmap="gray")
+plt.title("巴特沃斯低通,D=230,n=2"),plt.axis("off")
+plt.show()
+
+
+#4.3.3 高斯低通滤波器-图片a
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+img = cv2.imread('4.2.jpg',0) #直接读为灰度图像
+f = np.fft.fft2(img)
+fshift = np.fft.fftshift(f)
+s1 = np.log(np.abs(fshift))
+
+def gaussian_low_pass_kernel(img,cut_off):
+    assert img.ndim == 2
+    r,c = img.shape[1],img.shape[0]
+    u = np.arange(r)
+    v = np.arange(c)
+    u, v = np.meshgrid(u, v)
+    low_pass = np.sqrt( (u-r/2)**2 + (v-c/2)**2 )
+    xp = -1*(low_pass**2) / (2* cut_off**2)
+    low_pass = np.exp( xp )
+    low_pass = np.clip(low_pass,0,1)
+    return low_pass
+
+def gaussian_low_pass_filter(src,d):
+    assert src.ndim == 2
+    kernel = gaussian_low_pass_kernel(src,d)
+    gray = np.float64(src)
+    gray_fft = np.fft.fft2(gray)
+    gray_fftshift = np.fft.fftshift(gray_fft)
+    dst = np.zeros_like(gray_fftshift)
+    dst_filtered = kernel * gray_fftshift
+    dst_ifftshift = np.fft.ifftshift(dst_filtered)
+    dst_ifft = np.fft.ifft2(dst_ifftshift)
+    dst = np.abs(np.real(dst_ifft))
+    dst = np.clip(dst,0,255)
+    return np.uint8(dst)
+
+img_d1 = gaussian_low_pass_filter(img,5)
+img_d2 = gaussian_low_pass_filter(img,15)
+img_d3 = gaussian_low_pass_filter(img,30)
+img_d4 = gaussian_low_pass_filter(img,80)
+img_d5 = gaussian_low_pass_filter(img,230)
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10, 5))  # width * height
+plt.subplot(231),plt.axis("off")
+plt.imshow(img,cmap="gray"),plt.title('原始图像')
+plt.subplot(232),plt.axis("off")
+plt.imshow(img_d1,cmap="gray")
+plt.title('高斯低通 D=5'),plt.subplot(233),plt.axis("off")
+plt.title('高斯低通 D=15'),plt.imshow(img_d2,cmap="gray")
+plt.subplot(234),plt.axis("off")
+plt.title("高斯低通 D=30"),plt.imshow(img_d3,cmap="gray")
+plt.subplot(235),plt.axis("off")
+plt.title("高斯低通 D=80"),plt.imshow(img_d4,cmap="gray")
+plt.subplot(236),plt.axis("off")
+plt.title("高斯低通 D=230"),plt.imshow(img_d5,cmap="gray")
+plt.show()
+
+
+#4.3.3 高斯低通滤波器-文本
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+img = cv2.imread('4.3.jpg',0) #直接读为灰度图像
+f = np.fft.fft2(img)
+fshift = np.fft.fftshift(f)
+s1 = np.log(np.abs(fshift))
+
+def gaussian_low_pass_kernel(img,cut_off):
+    assert img.ndim == 2
+    r,c = img.shape[1],img.shape[0]
+    u = np.arange(r)
+    v = np.arange(c)
+    u, v = np.meshgrid(u, v)
+    low_pass = np.sqrt( (u-r/2)**2 + (v-c/2)**2 )
+    xp = -1*(low_pass**2) / (2* cut_off**2)
+    low_pass = np.exp( xp )
+    low_pass = np.clip(low_pass,0,1)
+    return low_pass
+
+def gaussian_low_pass_filter(src,d):
+    assert src.ndim == 2
+    kernel = gaussian_low_pass_kernel(src,d)
+    gray = np.float64(src)
+    gray_fft = np.fft.fft2(gray)
+    gray_fftshift = np.fft.fftshift(gray_fft)
+    dst = np.zeros_like(gray_fftshift)
+    dst_filtered = kernel * gray_fftshift
+    dst_ifftshift = np.fft.ifftshift(dst_filtered)
+    dst_ifft = np.fft.ifft2(dst_ifftshift)
+    dst = np.abs(np.real(dst_ifft))
+    dst = np.clip(dst,0,255)
+    return np.uint8(dst)
+
+img_d1 = gaussian_low_pass_filter(img,80)
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10, 5))  # width * height
+plt.subplot(121),plt.axis("off")
+plt.imshow(img,cmap="gray")
+plt.title('原始图像')
+plt.subplot(122),plt.axis("off")
+plt.title("高斯低通滤波 D=80")
+plt.imshow(img_d1,cmap="gray")
+plt.show()
+
+
+#4.3.3 高斯低通滤波器-人像
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+img = cv2.imread('4.4.jpg',0) #直接读为灰度图像
+
+f = np.fft.fft2(img)
+fshift = np.fft.fftshift(f)
+s1 = np.log(np.abs(fshift))
+
+def gaussian_low_pass_kernel(img,cut_off):
+    assert img.ndim == 2
+    r,c = img.shape[1],img.shape[0]
+    u = np.arange(r)
+    v = np.arange(c)
+    u, v = np.meshgrid(u, v)
+    low_pass = np.sqrt( (u-r/2)**2 + (v-c/2)**2 )
+    xp = -1*(low_pass**2) / (2* cut_off**2)
+    low_pass = np.exp( xp )
+    low_pass = np.clip(low_pass,0,1)
+    return low_pass
+
+def gaussian_low_pass_filter(src,d):
+    assert src.ndim == 2
+    kernel = gaussian_low_pass_kernel(src,d)
+    gray = np.float64(src)
+    gray_fft = np.fft.fft2(gray)
+    gray_fftshift = np.fft.fftshift(gray_fft)
+    dst = np.zeros_like(gray_fftshift)
+    dst_filtered = kernel * gray_fftshift
+    dst_ifftshift = np.fft.ifftshift(dst_filtered)
+    dst_ifft = np.fft.ifft2(dst_ifftshift)
+    dst = np.abs(np.real(dst_ifft))
+    dst = np.clip(dst,0,255)
+    return np.uint8(dst)
+
+img_d1 = gaussian_low_pass_filter(img,5)
+img_d2 = gaussian_low_pass_filter(img,30)
+img_d3 = gaussian_low_pass_filter(img,80)
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10, 5))  # width * height
+plt.subplot(221),plt.axis("off")
+plt.imshow(img,cmap="gray")
+plt.title('原始图像')
+plt.subplot(222),plt.axis("off")
+plt.imshow(img_d1,cmap="gray")
+plt.title('高斯低通 D=5')
+plt.subplot(223),plt.axis("off")
+plt.title("高斯低通 D=30")
+plt.imshow(img_d2,cmap="gray")
+plt.subplot(224),plt.axis("off")
+plt.title("高斯低通 D=80")
+plt.imshow(img_d3,cmap="gray")
+plt.show()
+
+
+#4.3.3 高斯低通滤波器-扫描线
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+img = cv2.imread('4.5.jpg',0) #直接读为灰度图像
+
+f = np.fft.fft2(img)
+fshift = np.fft.fftshift(f)
+s1 = np.log(np.abs(fshift))
+
+def gaussian_low_pass_kernel(img,cut_off):
+    assert img.ndim == 2
+    r,c = img.shape[1],img.shape[0]
+    u = np.arange(r)
+    v = np.arange(c)
+    u, v = np.meshgrid(u, v)
+    low_pass = np.sqrt( (u-r/2)**2 + (v-c/2)**2 )
+    xp = -1*(low_pass**2) / (2* cut_off**2)
+    low_pass = np.exp( xp )
+    low_pass = np.clip(low_pass,0,1)
+    return low_pass
+
+def gaussian_low_pass_filter(src,d):
+    assert src.ndim == 2
+    kernel = gaussian_low_pass_kernel(src,d)
+    gray = np.float64(src)
+    gray_fft = np.fft.fft2(gray)
+    gray_fftshift = np.fft.fftshift(gray_fft)
+    dst = np.zeros_like(gray_fftshift)
+    dst_filtered = kernel * gray_fftshift
+    dst_ifftshift = np.fft.ifftshift(dst_filtered)
+    dst_ifft = np.fft.ifft2(dst_ifftshift)
+    dst = np.abs(np.real(dst_ifft))
+    dst = np.clip(dst,0,255)
+    return np.uint8(dst)
+
+img_d1 = gaussian_low_pass_filter(img,10)
+img_d2 = gaussian_low_pass_filter(img,30)
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10, 5))  # width * height
+plt.subplot(131),plt.axis("off")
+plt.imshow(img,cmap="gray")
+plt.title('原始图像')
+plt.subplot(132),plt.axis("off")
+plt.imshow(img_d1,cmap="gray")
+plt.title('高斯低通滤波 D=10')
+plt.subplot(133),plt.axis("off")
+plt.title("高斯低通滤波 D=30")
+plt.imshow(img_d2,cmap="gray")
+plt.show()
+
+
+#4.4.1 理想高通滤波器
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+img = cv2.imread('4.2.jpg',0) #直接读为灰度图像
+f = np.fft.fft2(img)
+fshift = np.fft.fftshift(f)
+s1 = np.log(np.abs(fshift))
+
+
+def high_pass_kernel(img,cut_off):
+    assert img.ndim == 2
+    r,c = img.shape[1],img.shape[0]
+    u = np.arange(r)
+    v = np.arange(c)
+    u, v = np.meshgrid(u, v)
+    high_pass = np.sqrt( (u-r/2)**2 + (v-c/2)**2 )
+    high_pass[high_pass <= cut_off] = 0
+    high_pass[high_pass >= cut_off] = 1
+    return high_pass
+
+def ideal_high_pass_filter(img,d):
+    assert img.ndim == 2
+    M,N = img.shape[0],img.shape[1]
+    kernel =high_pass_kernel(img,d)
+    gray = img.copy()
+    gray = np.float64(gray)
+    gray_fft = np.fft.fft2(gray)
+    gray_fftshift = np.fft.fftshift(gray_fft)
+    dst = np.zeros_like(gray_fftshift)
+    dst_filtered = kernel * gray_fftshift
+    dst_ifftshift = np.fft.ifftshift(dst_filtered)
+    dst_ifft = np.fft.ifft2(dst_ifftshift)
+    dst = np.abs(np.real(dst_ifft))
+    dst = np.clip(dst,0,255)
+    return np.uint8(dst)
+
+img_d1 = ideal_high_pass_filter(img,15)
+img_d2 = ideal_high_pass_filter(img,30)
+img_d3 = ideal_high_pass_filter(img,80)
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10, 5))  # width * height
+plt.subplot(221),plt.axis("off")
+plt.imshow(img,cmap="gray"),plt.title('原始图像')
+plt.subplot(222),plt.axis("off")
+plt.imshow(img_d1,cmap="gray")
+plt.title('理想高通 D=15'),plt.subplot(223),plt.axis("off")
+plt.title('理想高通 D=30'),plt.imshow(img_d2,cmap="gray")
+plt.subplot(224),plt.axis("off")
+plt.title("理想高通 D=80"),plt.imshow(img_d3,cmap="gray")
+plt.show()
+
+
+#4.4.2 巴特沃斯高通滤波器
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+img = cv2.imread('4.2.jpg',0) #直接读为灰度图像
+f = np.fft.fft2(img)
+fshift = np.fft.fftshift(f)
+s1 = np.log(np.abs(fshift))
+
+def butterworth_low_pass_kernel(img,cut_off,butterworth_order=2):
+    assert img.ndim == 2
+    r,c = img.shape[1],img.shape[0]
+    u = np.arange(r)
+    v = np.arange(c)
+    u, v = np.meshgrid(u, v)
+    low_pass = np.sqrt( (u-r/2)**2 + (v-c/2)**2 )
+    denom = 1.0 + (low_pass / cut_off)**(2 * butterworth_order)
+    low_pass = 1.0 / denom
+    return low_pass
+
+def butterworth_high_pass_kernel(src,d,n):
+    assert src.ndim == 2
+    kernel = 1 - butterworth_low_pass_kernel(src,d,n)
+    gray = np.float64(src)
+    gray_fft = np.fft.fft2(gray)
+    gray_fftshift = np.fft.fftshift(gray_fft)
+    dst = np.zeros_like(gray_fftshift)
+    dst_filtered = kernel * gray_fftshift
+    dst_ifftshift = np.fft.ifftshift(dst_filtered)
+    dst_ifft = np.fft.ifft2(dst_ifftshift)
+    dst = np.abs(np.real(dst_ifft))
+    dst = np.clip(dst,0,255)
+    return np.uint8(dst)
+
+butter_15_2 = butterworth_high_pass_kernel(img,15,2)
+butter_30_2 = butterworth_high_pass_kernel(img,30,2)
+butter_80_2 = butterworth_high_pass_kernel(img,80,2)
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10, 5))  # width * height
+plt.subplot(221),plt.imshow(img,cmap="gray")
+plt.title("原始图像"),plt.axis("off")
+plt.subplot(222),plt.imshow(butter_15_2,cmap="gray")
+plt.title("巴特沃斯高通 D=15,n=2"),plt.axis("off")
+plt.subplot(223),plt.imshow(butter_30_2,cmap="gray")
+plt.title("巴特沃斯高通 D=30,n=2"),plt.axis("off")
+plt.subplot(224),plt.imshow(butter_80_2,cmap="gray")
+plt.title("巴特沃斯高通 D=80,n=2"),plt.axis("off")
+plt.show()
+
+
+#4.4.3 高斯高通滤波器
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+img = cv2.imread('4.2.jpg',0) #直接读为灰度图像
+f = np.fft.fft2(img)
+fshift = np.fft.fftshift(f)
+s1 = np.log(np.abs(fshift))
+
+def gaussian_high_pass_kernel(img,cut_off):
+    assert img.ndim == 2
+    r,c = img.shape[1],img.shape[0]
+    u = np.arange(r)
+    v = np.arange(c)
+    u, v = np.meshgrid(u, v)
+    high_pass = np.sqrt( (u-r/2)**2 + (v-c/2)**2 )
+    xp = -1*(high_pass**2) / (2* cut_off**2)
+    high_pass = 1-np.exp( xp )
+    high_pass = np.clip(high_pass,0,1)
+    return high_pass
+
+def gaussian_high_pass_filter(src,d):
+    assert src.ndim == 2
+    kernel = gaussian_high_pass_kernel(src,d)
+    gray = np.float64(src)
+    gray_fft = np.fft.fft2(gray)
+    gray_fftshift = np.fft.fftshift(gray_fft)
+    dst = np.zeros_like(gray_fftshift)
+    dst_filtered = kernel * gray_fftshift
+    dst_ifftshift = np.fft.ifftshift(dst_filtered)
+    dst_ifft = np.fft.ifft2(dst_ifftshift)
+    dst = np.abs(np.real(dst_ifft))
+    dst = np.clip(dst,0,255)
+    return np.uint8(dst)
+
+img_d1 = gaussian_high_pass_filter(img,15)
+img_d2 = gaussian_high_pass_filter(img,30)
+img_d3 = gaussian_high_pass_filter(img,80)
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10, 5))  # width * height
+plt.subplot(221),plt.axis("off")
+plt.imshow(img,cmap="gray")
+plt.title('原始图像')
+plt.subplot(222),plt.axis("off")
+plt.imshow(img_d1,cmap="gray")
+plt.title('高斯高通 D=15')
+plt.subplot(223),plt.axis("off")
+plt.title('高斯高通 D=30')
+plt.imshow(img_d2,cmap="gray")
+plt.subplot(224),plt.axis("off")
+plt.title("高斯高通 D=80")
+plt.imshow(img_d3,cmap="gray")
+plt.show()
+

@@ -1,0 +1,193 @@
+import cv2 as cv
+import numpy as np
+import math
+from matplotlib import pyplot as plt
+from pylab import mpl
+mpl.rcParams['font.sans-serif'] = ['STZhongsong']    # 指定默认字体：解决plot不能显示中文问题
+
+#图像点检测
+def Point(image):
+    corners = cv.goodFeaturesToTrack(image, 20, 0.06, 10)    #检测图像中的角点坐标
+    corners = np.int0(corners)    #角点坐标int化
+    image_color = cv.cvtColor(image, cv.COLOR_GRAY2BGR)
+    for i in corners:
+        x, y = i.ravel()
+        cv.circle(image_color, (x, y), 5, (255,0,0), -1)    #在图像中圈出检测到角点
+    return image_color
+
+#图像直线检测
+def Line(image):
+    edges = cv.Canny(image, 50, 150, apertureSize=3)  # 获取图像边界
+    lines = cv.HoughLinesP(edges, 1, np.pi / 180, 60, minLineLength=60, maxLineGap=5)   # 对边界图像进行霍夫线检测
+    image_color = cv.cvtColor(image, cv.COLOR_GRAY2BGR)
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        cv.line(image_color, (x1, y1), (x2, y2), (255,0,0), 2)    # 画出检测到的直线
+    return image_color
+
+# Robert算子提取边界
+def Robert(image):
+    image_robert = image.copy()
+    kenerl_robert = np.array([[-1,-1],    # 规定Robert算子
+                              [1, 1]])
+    image_robert = cv.filter2D(image_robert, -1, kenerl_robert)    #Robert算子进行卷积
+    return image_robert
+
+# Prewitte算子提取边界
+def Prewitte(image):
+    image_copy = image.copy()
+    prewitt_x = np.array([[-1, 0, 1],       # 规定Prewitte算子
+                          [-1, 0, 1],
+                          [-1, 0, 1]])
+    prewitt_y = np.array([[-1, -1, -1],
+                          [0, 0, 0],
+                          [1, 1, 1]])
+    img_X = cv.filter2D(image_copy, -1, prewitt_x)      # # 分别从X, Y方向进行卷积
+    img_Y = cv.filter2D(image_copy, -1, prewitt_y)
+
+    img_prewitte = np.zeros(image_copy.shape)       #Prewitte算子边界提取算法
+    for i in range(img_prewitte.shape[0]):
+        for j in range(img_prewitte.shape[1]):
+            img_prewitte[i][j] = max(img_X[i][j], img_Y[i][j])
+    return img_prewitte
+
+# Sobel算子提取边界
+def Sobel(image):
+    image_copy = image.copy()
+    kernel_sobel_x = np.array([[-1, 0, 1],      # 规定Sobel算子
+                               [-2, 0, 2],
+                               [-1, 0, 1]])
+    kernel_sobel_y = np.array([[-1, -2, -1],
+                               [0, 0, 0],
+                               [1, 2, 1]])
+    image_sobel_x = cv.convertScaleAbs(cv.filter2D(image_copy, -1, kernel_sobel_x))     # 分别从X, Y方向进行卷积
+    image_sobel_y = cv.convertScaleAbs(cv.filter2D(image_copy, -1, kernel_sobel_y))
+    image_sobel = image_sobel_x + image_sobel_y     #图像合成
+    image_sobel = cv.convertScaleAbs(image_sobel)
+    return image_sobel
+
+#自适应门限法分割图像
+def Auto_Thresh(image, thresh, C):
+    value_less = []             #C：迭代停止条件
+    value_more = []             #thresh：当前阈值
+    thresh_last = thresh+10     #thresh：上一次迭代确定的阈值
+    while(abs(thresh - thresh_last) > C):
+        thresh_last = thresh
+        for i in range(image.shape[0]):     #遍历图像
+            for j in range(image.shape[1]):
+                if image[i, j] < thresh:
+                    value_less.append(image[i, j])
+                else:
+                    value_more.append(image[i, j])
+        value_more_array = np.array(value_more)
+        value_less_array = np.array(value_less)
+        value_less_ave = np.average(value_less_array)   #大于阈值的像素取平均值
+        value_more_ave = np.average(value_more_array)   #小于阈值的像素取平均值
+        thresh = (value_more_ave + value_less_ave)/2    #以上二值取平均，确定该次迭代的阈值
+
+    #根据求得的阈值进行二值化，图像分割
+    _, image_thresh = cv.threshold(img, thresh, 255, cv.THRESH_BINARY)
+    return image_thresh
+
+#求两个点的差值
+def getGrayDiff(image,currentPoint,tmpPoint):
+    return abs(int(image[currentPoint[0],currentPoint[1]]) - int(image[tmpPoint[0],tmpPoint[1]]))
+def regional_growth (image,seeds,threshold) :
+    #每次区域生长的时候的种子像素之间的八个邻接点
+    connects = [(-1, -1), (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0)]
+    threshold = threshold #种子生长时候的相似性阈值，默认即灰度级不相差超过15以内的都算为相同
+    height, weight = image.shape
+    seedMark = np.zeros(image.shape)
+    seedList = []
+    for seed in seeds:
+        seedList.append(seed)   #将种子添加到种子的列表中
+    label = 1
+    while(len(seedList)>0):     #如果种子列表里还存在种子点
+        currentPoint = seedList.pop(0)  #将最前面的那个种子抛出
+        seedMark[currentPoint[0],currentPoint[1]] = label   #将对应位置的点标志为1
+        for i in range(8):  #对这个种子点周围的8个点一次进行相似性判断
+            tmpX = currentPoint[0] + connects[i][0]
+            tmpY = currentPoint[1] + connects[i][1]
+            if tmpX < 0 or tmpY < 0 or tmpX >= height or tmpY >= weight:    #如果超出限定的阈值范围
+                continue
+            grayDiff = getGrayDiff(image,currentPoint,(tmpX,tmpY))   #计算此点与种子像素点的灰度级之差
+            if grayDiff < threshold and seedMark[tmpX,tmpY] == 0:
+                seedMark[tmpX,tmpY] = label
+                seedList.append((tmpX,tmpY))
+    return seedMark
+
+if __name__ == "__main__":
+    img = cv.imread("boat.jpg")     #读取原图
+    img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)   #获取灰度图
+    height = int(img.shape[0]/1.5)
+    width = int(img.shape[1]/1.5)
+    img = cv.resize(img, (width, height))
+
+    print("本次内容:\n1. 间断检测\n2. 算子边缘检测\n3. 图像门限分割\n4. 图像区域分割\n")
+    input("Enter回车开始：")
+
+    print("1. 间断检测：点检测 + 线检测")
+    print("运算中...")
+    img_point = Point(img)      #角点检测
+    img_line = Line(img)        #线检测
+    plt.figure("点线检测")
+    plt.subplot(221), plt.imshow(img, cmap='gray')
+    plt.title("原图"), plt.axis('off')
+    plt.subplot(223), plt.imshow(img_point, cmap='gray')
+    plt.title("点检测"), plt.axis('off')
+    plt.subplot(224), plt.imshow(img_line, cmap='gray')
+    plt.title("线检测"), plt.axis('off')
+    plt.show()
+    print("完成")
+
+    print("2. 算子边缘检测：Robert算子 + Prewitte算子 + Sobel算子")
+    print("运算中...")
+    img_robert = Robert(img)        #Robert算子提取
+    img_prewitte = Prewitte(img)    #Prewitte算子提取
+    img_sobel_xy = cv.Sobel(img, cv.CV_64F, 1, 1, ksize=3)      #Sobel算子提取
+    plt.figure("边缘检测")
+    plt.subplot(221), plt.imshow(img, cmap = 'gray')
+    plt.title("原图"), plt.axis('off')
+    plt.subplot(222), plt.imshow(img_robert, cmap = 'gray')
+    plt.title("Robert算子"), plt.axis('off')
+    plt.subplot(223), plt.imshow(img_prewitte, cmap = 'gray')
+    plt.title("Prewitte算子"), plt.axis('off')
+    plt.subplot(224), plt.imshow(img_sobel_xy, cmap = 'gray')
+    plt.title("Sobel算子"), plt.axis('off')
+    plt.show()
+    print("完成")
+
+    print("3. 图像门限分割：全局阈值分割 + 自动阈值分割 + 自适应阈值分割")
+    print("运算中...")
+    _, img_thresh = cv.threshold(img, 100, 255, cv.THRESH_BINARY)   #全局阈值分割
+    img_thresh_auto = Auto_Thresh(img, thresh=50, C=5)              #自动全局阈值分割
+    img_adaptive = cv.adaptiveThreshold(img, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, blockSize=15, C=5)   #自适应阈值分割
+    plt.figure("图像分割")
+    plt.subplot(221), plt.imshow(img, cmap='gray')
+    plt.title("原图"), plt.axis('off')
+    plt.subplot(222), plt.imshow(img_thresh, cmap='gray')
+    plt.title("全局阈值分割"), plt.axis('off')
+    plt.subplot(223), plt.imshow(img_thresh_auto, cmap='gray')
+    plt.title("自动阈值分割"), plt.axis('off')
+    plt.subplot(224), plt.imshow(img_adaptive, cmap='gray')
+    plt.title("自适应阈值分割"), plt.axis('off')
+    plt.show()
+    print("完成")
+
+    print("4. 图像区域分割：区域生长法 + 区域分割法")
+    print("运算中...")
+    img = cv.imread("lena.jpg")
+    img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    seed_points = [(10, 150), (200, 40), (75, 500), (428, 210), (263, 20)]  # 输入选取的种子像素
+    image_seed_grow = regional_growth(img, seed_points, threshold=5)
+    image_sepecate = regional_growth(img, seed_points, threshold=10)
+    plt.figure("图像区域分割")
+    plt.subplot(121), plt.imshow(image_seed_grow, cmap='gray')
+    plt.title("区域生长法分割"), plt.axis('off')
+    plt.subplot(122), plt.imshow(image_sepecate, cmap='gray')
+    plt.title("区域分割法分割"), plt.axis('off')
+    plt.show()
+    print("完成")
+
+
+

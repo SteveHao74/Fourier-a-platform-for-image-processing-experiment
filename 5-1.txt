@@ -1,0 +1,316 @@
+import cv2 as cv
+import numpy as np
+import math
+from matplotlib import pyplot as plt
+from pylab import mpl
+mpl.rcParams['font.sans-serif'] = ['STZhongsong']    # 指定默认字体：解决plot不能显示中文问题
+
+#高斯噪声
+def gasuss_noise(image, mean, var):     #mean：高斯噪声均值； var：高斯噪声方差
+    image = np.array(image/255, dtype=np.float32)     #图像归一化到（0，1）
+    noise = np.random.normal(mean, var ** 0.5, image.shape)       #生成高斯分布的随机噪声
+    noiseImg = image + noise     #将噪声叠加到原图中
+    if noiseImg.min() < 0:       #确定噪声图像下界
+        low_clip = -1.
+    else:
+        low_clip = 0.
+    noiseImg = np.clip(noiseImg, low_clip, 1.0)     #规定噪声图像上下界
+    noiseImg = np.uint8(noiseImg*255)               #将图像归一化到（0， 255）
+    return noiseImg
+
+#椒盐噪声
+def PepperandSalt(src,percetage):   #percetage：椒盐噪声生成百分比
+    NoiseImg = src
+    NoiseImg_1 = NoiseImg.copy()
+    NoiseImg_2 = NoiseImg.copy()
+    NoiseNum=int(percetage*src.shape[0]*src.shape[1])
+    for i in range(NoiseNum):
+        randX=np.random.random_integers(0,src.shape[0]-1)   #随机确定噪声坐标
+        randY=np.random.random_integers(0,src.shape[1]-1)
+        if np.random.random_integers(0, 1)<=0.5:            #随机选取噪声种类（椒或盐）
+            NoiseImg[randX,randY]=0
+        else:
+            NoiseImg[randX,randY]=255
+
+        NoiseImg_1[randX,randY] = 0     #随机位置生成椒噪声
+        NoiseImg_2[randX,randY] = 255   #随机位置生成盐噪声
+    return NoiseImg, NoiseImg_1, NoiseImg_2
+
+#最大最小值滤波
+def MinAndMan_Blur(image, size):    #size：窗口尺寸
+    value = []
+    edge = int((size-1)/2)
+    image_min = image.copy()
+    image_max = image.copy()
+    for i in range(edge, image.shape[0] - edge):        #遍历全图
+        for j in range(edge, image.shape[1] - edge):
+            for m in range(-edge, edge+1):
+                for n in range(-edge, edge+1):
+                    value.append(image[i+m, j+n])
+            value_array = np.array(value)
+            value_max = np.max(value_array)     #获取窗口内像素的最大值
+            value_min = np.min(value_array)     #获取窗口内像素的最小值
+
+            if image_max[i, j] >= value_max:    #当前点大于最大值，赋值为最大值
+                image_max[i, j] = value_max
+            if image_min[i, j] <= value_min:    #当前点小于最小值，赋值为最小值
+                image_min[i, j ] = value_min
+            value.clear()
+    return image_max, image_min
+
+#谐波滤波
+def Harmonic(image, size):      #size：窗口尺寸
+    edge = int((size - 1) / 2)
+    image_Harmonic = np.zeros(image.shape, dtype= np.float32)
+    value = []
+
+    for i in range(edge, image.shape[0] - edge):    #遍历全图
+        for j in range(edge, image.shape[1] - edge):
+            for m in range(-edge, edge + 1):
+                for n in range(-edge, edge + 1):
+                    value.append(image[i + m, j + n])
+            value_array = np.array(value)
+            value_array = value_array.astype(np.float32)
+            value_sum = np.sum(1.0/value_array)
+            image_Harmonic[i, j] = float(size*size)/ value_sum  #谐波滤波算法
+            value.clear()
+    cv.normalize(image_Harmonic, image_Harmonic, 0, 255, cv.NORM_MINMAX)    #图像归一化
+    image_Harmonic = cv.convertScaleAbs(image_Harmonic)
+    return image_Harmonic
+
+#逆谐波滤波
+def Inverse_Harmonic(image, size, Q):   #Q：逆谐波滤波参数
+    value_1 = []
+    value_2 = []
+    edge = int((size-1)/2)
+    image_xiebo = image.copy().astype(np.float32)
+    for i in range(edge, image.shape[0] - edge):    #遍历全图
+        for j in range(edge, image.shape[1] - edge):
+            for m in range(-edge, edge+1):
+                for n in range(-edge, edge+1):
+                    point = image_xiebo[i + m, j + n]+1
+                    value_1.append(point**(Q+1))    #逆谐波滤波算法
+                    value_2.append(point**Q)        #当前点取 Q或 Q+1次方
+
+            value_1_array = np.array(value_1)
+            value_2_array = np.array(value_2)
+            sum_1 = np.sum(value_1_array)       #数组1求和
+            sum_2 = np.sum(value_2_array)       #数组2求和
+
+            image_xiebo[i,j] = sum_1/sum_2      #确定新的像素点值
+            value_1.clear()                     #元组1清空
+            value_2.clear()                     #元组2清空
+    image_xiebo = cv.convertScaleAbs(image_xiebo)
+    return image_xiebo
+
+#中点滤波
+def ZhongDian_Blur(image, size):
+
+    edge = int((size - 1) / 2)
+    image_zhongdina = image.copy()
+    for i in range(edge, image.shape[0] - edge):        #遍历全图
+        for j in range(edge, image.shape[1] - edge):
+            value_max = np.max(image[i - edge: i + edge + 1, j - edge: j + edge + 1])   #获取窗口内像素的最大值
+            value_min = np.min(image[i - edge: i + edge + 1, j - edge: j + edge + 1])   #获取窗口内像素的最小值
+            image_zhongdina[i,j] = (value_min+ value_max)/ 2    #最大最小值求均值
+    return image_zhongdina
+
+#阿尔法滤波
+def Alpha_Blur(image, size, d):
+    value = []
+    value_index = []
+    edge = int((size - 1) / 2)
+
+    image_Alpha = image.copy()
+    for i in range(edge, image.shape[0] - edge):    #遍历全图
+        for j in range(edge, image.shape[1] - edge):
+            for m in range(-edge, edge + 1):
+                for n in range(-edge, edge + 1):
+                    value.append(image[i + m, j + n])
+            value_array = np.array(value)
+            value_array_order = np.sort(value_array)    #数组重新排序
+
+            for k in range(int(d/2)):
+                value_index.append(k)
+                value_index.append(len(value_array)-k-1)
+            index = np.array(value_index)
+            value_array_rest = np.delete(value_array_order, index)
+            image_Alpha[i, j] = int(np.average(value_array_rest))
+            value_index.clear()
+            value.clear()
+
+    return image_Alpha
+
+# 自适应中值滤波
+def adaptiveMedianDeNoise(image, size_max):
+    startWindow = 3                 # 初始窗口大小
+    edge = int(size_max/2)          # 卷积范围
+    image = cv.copyMakeBorder(image, edge, edge, edge, edge, cv.BORDER_REPLICATE)      #增加图像边缘，便于卷积处理
+    height, width = image.shape
+    image_new = np.zeros(image.shape)
+    for i in range(edge+1, height - (edge+1)):  #遍历全图
+        for j in range(edge+1, width - (edge+1)):
+            k = int(startWindow / 2)
+            value_median = np.median(image[i - k:i + k + 1, j - k:j + k + 1])  #获取窗口内像素的中值
+            value_min = np.min(image[i - k:i + k + 1, j - k:j + k + 1])        #获取窗口内像素的最大值
+            value_max = np.max(image[i - k:i + k + 1, j - k:j + k + 1])        #获取窗口内像素的最小值
+            if value_min < value_median < value_max:        #满足条件新图像赋值
+                if value_min < image[i, j] < value_max:
+                    image_new[i, j] = image[i, j]
+                else:
+                    image_new[i, j] = value_median
+            else:                                           #不满足条件，扩大窗口大小
+                while True:                                 #重复以上步骤，直至找到合适的值或到达窗口尺寸上限
+                    startWindow = startWindow + 2           #跳出循环返回以上步骤
+                    k = int(startWindow / 2)
+                    value_median = np.median(image[i - k:i + k + 1, j - k:j + k + 1])
+                    value_min = np.min(image[i - k:i + k + 1, j - k:j + k + 1])
+                    value_max = np.max(image[i - k:i + k + 1, j - k:j + k + 1])
+                    if value_min < value_median < value_max or startWindow > size_max:
+                        break
+                if value_min < value_median < value_max or startWindow > size_max:
+                    if value_min < image[i, j] < value_max:
+                        image_new[i, j] = image[i, j]
+                    else:
+                        image_new[i, j] = value_median
+    image_new = image_new[edge+1: height - (edge+1), edge+1: width - (edge+1)]
+    image_new = cv.convertScaleAbs(image_new)
+    return image_new
+
+# 几何均值滤波
+def Blur_Geomean(image, size):
+    edge = int((size - 1) / 2)
+    image_Geomean = image.copy()
+    value = []
+
+    for i in range(edge, image.shape[0] - edge):    #遍历全图
+        for j in range(edge, image.shape[1] - edge):
+            for m in range(-edge, edge + 1):
+                for n in range(-edge, edge + 1):
+                    value.append(image[i + m, j + n])
+            value_array = np.array(value)
+            value_array = value_array.astype(np.float32)
+            value_product = np.prod(value_array)     #数组求积
+            image_Geomean[i,j] = value_product ** (1/float(size*size))      #获取新的滤波值
+            value.clear()
+    image_Geomean = cv.convertScaleAbs(image_Geomean)
+
+    return image_Geomean
+
+if __name__ == "__main__":
+    img = cv.imread("boat.jpg")
+    height = int(img.shape[0]/2)
+    width = int(img.shape[1]/2)
+
+    img = cv.resize(img, (width,height))
+    img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    print("本次内容:\n1. 噪声图像\n2. 均值滤波\n3. 谐波滤波\n4. 逆谐波滤波\n5. 统计排序滤波\n6. 自适应滤波\n")
+    input("Enter回车开始：")
+
+    # 添加噪声（高斯、椒、盐、椒盐噪声）
+    print("1. 噪声图像：高斯噪声 + 椒盐噪声 + 椒噪声 + 盐噪声")
+    print("运算中...")
+    img_gasuss = gasuss_noise(img, 0, 0.005)        #高斯噪声
+    img_ps, img_pepper, img_salt = PepperandSalt(img, 0.05)     #椒盐噪声+椒噪声+盐噪声
+    plt.figure("噪声图像")
+    plt.subplot(221), plt.imshow(img_gasuss, cmap='gray')
+    plt.title("高斯噪声"), plt.axis('off')
+    plt.subplot(222), plt.imshow(img_ps, cmap='gray')
+    plt.title("椒盐噪声"), plt.axis('off')
+    plt.subplot(223), plt.imshow(img_pepper, cmap='gray')
+    plt.title("椒噪声"), plt.axis('off')
+    plt.subplot(224), plt.imshow(img_salt, cmap='gray')
+    plt.title("盐噪声"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    # 均值滤波
+    print("2. 均值滤波：算术均值滤波 + 几何均值滤波")
+    print("运算中...")
+    size = 3
+    img_means = cv.blur(img_gasuss, (size, size))   #算数均值滤波
+    img_geomeans = Blur_Geomean(img_gasuss, size)   #几何均值滤波
+    plt.figure("均值滤波")
+    plt.subplot(221), plt.imshow(img_gasuss, cmap='gray')
+    plt.title("噪声图像"), plt.axis('off')
+    plt.subplot(223), plt.imshow(img_means, cmap='gray')
+    plt.title("算术均值滤波（适用于均匀分布噪声）"), plt.axis('off')
+    plt.subplot(224), plt.imshow(img_geomeans, cmap='gray')
+    plt.title("几何均值滤波（适用于均匀分布噪声）"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    # 谐波滤波
+    print("3. 谐波滤波")
+    print("运算中...")
+    image_Harmonic = Harmonic(img_salt, size=3)    #谐波滤波
+    plt.figure("谐波滤波")
+    plt.subplot(121), plt.imshow(img_salt, cmap='gray')
+    plt.title("盐噪声图像"), plt.axis('off')
+    plt.subplot(122), plt.imshow(image_Harmonic, cmap='gray')
+    plt.title("谐波滤波"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    # 逆谐波滤波
+    print("4. 逆谐波滤波")
+    print("运算中...")
+    img_Inverse_Harmonic_salt = Inverse_Harmonic(img_salt, size=3, Q=-1.5)      #逆谐波滤波：Q<0
+    img_Inverse_Harmonic_pepper = Inverse_Harmonic(img_pepper, size=3, Q=1.5)   #逆谐波滤波：Q>0
+    plt.figure("逆谐波滤波")
+    plt.subplot(221), plt.imshow(img_salt, cmap='gray')
+    plt.title("盐噪声"), plt.axis('off')
+    plt.subplot(222), plt.imshow(img_pepper, cmap='gray')
+    plt.title("椒噪声"), plt.axis('off')
+    plt.subplot(223), plt.imshow(img_Inverse_Harmonic_salt, cmap='gray')
+    plt.title("逆谐波滤波（Q<0）适用于盐噪声"), plt.axis('off')
+    plt.subplot(224), plt.imshow(img_Inverse_Harmonic_pepper, cmap='gray')
+    plt.title("逆谐波滤波（Q>0）适用于椒噪声"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    # 中值滤波 + 最大值滤波 + 最小值滤波
+    print("5-1. 统计排序滤波1：中值滤波 + 最大值滤波 + 最小值滤波")
+    print("运算中...")
+    img_median = cv.medianBlur(img_ps, size)                #中值滤波
+    img_max, img_min = MinAndMan_Blur(img_gasuss, size)     #最大最小值滤波
+    plt.figure("其他滤波")
+    plt.subplot(221), plt.imshow(img_ps, cmap='gray')
+    plt.title("噪声图像"), plt.axis('off')
+    plt.subplot(222), plt.imshow(img_median, cmap='gray')
+    plt.title("中值滤波"), plt.axis('off')
+    plt.subplot(223), plt.imshow(img_max, cmap='gray')
+    plt.title("最大值滤波"), plt.axis('off')
+    plt.subplot(224), plt.imshow(img_min, cmap='gray')
+    plt.title("最小值滤波"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    #中点滤波 + 阿尔法滤波
+    print("5-2. 统计排序滤波2：中点滤波 + 阿尔法滤波")
+    print("运算中...")
+    img_ZhongDian = ZhongDian_Blur(img_gasuss, size=5)  #中点滤波
+    img_Alpha = Alpha_Blur(img_gasuss, size=5, d=4)     #阿尔法滤波
+    plt.figure("统计排序滤波")
+    plt.subplot(221), plt.imshow(img_gasuss, cmap='gray')
+    plt.title("高斯噪声"), plt.axis('off')
+    plt.subplot(223), plt.imshow(img_ZhongDian, cmap='gray')
+    plt.title("中点滤波"), plt.axis('off')
+    plt.subplot(224), plt.imshow(img_Alpha, cmap='gray')
+    plt.title("阿尔法滤波"), plt.axis('off')
+    plt.show()
+    print("完成\n")
+
+    #自适应中值滤波
+    print("6. 自适应滤波：自适应中值滤波")
+    print("运算中...")
+    img_median_adapt = adaptiveMedianDeNoise(img_ps, size_max = 7)  #自适应中值滤波
+    plt.figure("中值滤波对比")
+    plt.subplot(221), plt.imshow(img_ps, cmap='gray')
+    plt.title("椒盐噪声"), plt.axis('off')
+    plt.subplot(223), plt.imshow(img_median, cmap='gray')
+    plt.title("中值滤波"), plt.axis('off')
+    plt.subplot(224), plt.imshow(img_median_adapt, cmap='gray')
+    plt.title("自适应中值滤波"), plt.axis('off')
+    plt.show()
+    print("完成\n")

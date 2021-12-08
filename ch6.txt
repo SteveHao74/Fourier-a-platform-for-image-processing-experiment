@@ -1,0 +1,653 @@
+﻿#第六章彩色图像处理
+
+#HSI彩色模型（三色图）
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+#RGB图像转换为HSI图像代码
+def RGB2HSI(rgb_img):
+    # 保存原始图像的行列数
+    row = np.shape(rgb_img)[0]
+    col = np.shape(rgb_img)[1]
+    # 对原始图像进行复制
+    hsi_img = rgb_img.copy()
+    # 对图像进行通道拆分
+    B, G, R = cv2.split(rgb_img)
+    # 把通道归一化到[0,1]
+    [B, G, R] = [i / 255.0 for i in ([B, G, R])]
+    H = np.zeros((row, col))  # 定义H通道
+    I = (R + G + B) / 3.0  # 计算I通道
+    S = np.zeros((row, col))  # 定义S通道
+    for i in range(row):
+        den = np.sqrt((R[i] - G[i]) ** 2 + (R[i] - B[i]) * (G[i] - B[i]))
+        thetha = np.arccos(0.5 * (R[i] - B[i] + R[i] - G[i]) / den)  # 计算夹角
+        h = np.zeros(col)  # 定义临时数组
+        # den>0且G>=B的元素h赋值为thetha
+        h[B[i] <= G[i]] = thetha[B[i] <= G[i]]
+        # den>0且G<=B的元素h赋值为thetha
+        h[G[i] < B[i]] = 2 * np.pi - thetha[G[i] < B[i]]
+        # den<0的元素h赋值为0
+        h[den == 0] = 0
+        H[i] = h / (2 * np.pi)  # 弧度化后赋值给H通道
+    # 计算S通道
+    for i in range(row):
+        min = []
+        # 找出每组RGB值的最小值
+        for j in range(col):
+            arr = [B[i][j], G[i][j], R[i][j]]
+            min.append(np.min(arr))
+        min = np.array(min)
+        # 计算S通道
+        S[i] = 1 - min * 3 / (R[i] + B[i] + G[i])
+        # I为0的值直接赋值0
+        S[i][R[i] + B[i] + G[i] == 0] = 0
+    # 扩充到255以方便显示，一般H分量在[0,2pi]之间，S和I在[0,1]之间
+    hsi_img[:, :, 0] = H * 255
+    hsi_img[:, :, 1] = S * 255
+    hsi_img[:, :, 2] = I * 255
+    return H,S,I
+
+#读取图像
+img = cv2.imread('6.1.jpg')
+b,g,r = cv2.split(img)
+rgb_img= cv2.merge([r,g,b])
+
+# 进行颜色空间转换
+H,S,I= RGB2HSI(img)
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10,5))
+plt.subplot(2,2,1), plt.title('原始图像')
+plt.imshow(rgb_img), plt.axis('off')
+plt.subplot(2,2,2), plt.title('Hue 分量')  #Hue通道
+plt.imshow(H,cmap='gray'), plt.axis('off')
+plt.subplot(2,2,3), plt.title('Saturation 分量')  #Saturation通道
+plt.imshow(S,cmap='gray'), plt.axis('off')
+plt.subplot(2,2,4), plt.title('Intensity 分量')  #Intensity通道
+plt.imshow(I,cmap='gray'), plt.axis('off')
+plt.show()
+
+
+
+
+#图像的伪彩色处理
+
+import cv2
+import matplotlib.pyplot as plt
+
+#读取图像
+image= cv2.imread("6.2.jpg")
+im_color = cv2.applyColorMap(image, cv2.COLORMAP_RAINBOW)
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10,5))
+plt.subplot(1,2,1), plt.title('原始图像')
+plt.imshow(image), plt.axis('off')
+plt.subplot(1,2,2), plt.title('伪彩色处理')
+plt.imshow(im_color,cmap='gray'), plt.axis('off')
+plt.show()
+
+
+
+#RGB模型各通道显示
+
+import cv2
+import matplotlib.pyplot as plt
+
+#读取图像
+img = cv2.imread('6.jpg')
+b,g,r = cv2.split(img)
+image= cv2.merge([r,g,b])
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10,5))
+plt.subplot(2,2,1), plt.title('原始图像')
+plt.imshow(image), plt.axis('off')
+plt.subplot(2,2,2), plt.title('Red 通道')  #red通道
+plt.imshow(r,cmap='gray'), plt.axis('off')
+plt.subplot(2,2,3), plt.title('Green 通道')  #green通道
+plt.imshow(g,cmap='gray'), plt.axis('off')
+plt.subplot(2,2,4), plt.title('Blue 通道')  #blue通道
+plt.imshow(b,cmap='gray'), plt.axis('off')
+plt.show()
+
+
+
+#HSI彩色模型
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+#RGB图像转换为HSI图像代码
+def RGB2HSI(rgb_img):
+    # 保存原始图像的行列数
+    row = np.shape(rgb_img)[0]
+    col = np.shape(rgb_img)[1]
+    # 对原始图像进行复制
+    hsi_img = rgb_img.copy()
+    # 对图像进行通道拆分
+    B, G, R = cv2.split(rgb_img)
+    # 把通道归一化到[0,1]
+    [B, G, R] = [i / 255.0 for i in ([B, G, R])]
+    H = np.zeros((row, col))  # 定义H通道
+    I = (R + G + B) / 3.0  # 计算I通道
+    S = np.zeros((row, col))  # 定义S通道
+    for i in range(row):
+        den = np.sqrt((R[i] - G[i]) ** 2 + (R[i] - B[i]) * (G[i] - B[i]))
+        thetha = np.arccos(0.5 * (R[i] - B[i] + R[i] - G[i]) / den)  # 计算夹角
+        h = np.zeros(col)  # 定义临时数组
+        # den>0且G>=B的元素h赋值为thetha
+        h[B[i] <= G[i]] = thetha[B[i] <= G[i]]
+        # den>0且G<=B的元素h赋值为thetha
+        h[G[i] < B[i]] = 2 * np.pi - thetha[G[i] < B[i]]
+        # den<0的元素h赋值为0
+        h[den == 0] = 0
+        H[i] = h / (2 * np.pi)  # 弧度化后赋值给H通道
+    # 计算S通道
+    for i in range(row):
+        min = []
+        # 找出每组RGB值的最小值
+        for j in range(col):
+            arr = [B[i][j], G[i][j], R[i][j]]
+            min.append(np.min(arr))
+        min = np.array(min)
+        # 计算S通道
+        S[i] = 1 - min * 3 / (R[i] + B[i] + G[i])
+        # I为0的值直接赋值0
+        S[i][R[i] + B[i] + G[i] == 0] = 0
+    # 扩充到255以方便显示，一般H分量在[0,2pi]之间，S和I在[0,1]之间
+    hsi_img[:, :, 0] = H * 255
+    hsi_img[:, :, 1] = S * 255
+    hsi_img[:, :, 2] = I * 255
+    return H,S,I
+
+#读取图像
+img = cv2.imread('6.jpg')
+b,g,r = cv2.split(img)
+rgb_img= cv2.merge([r,g,b])
+
+# 进行颜色空间转换
+H,S,I= RGB2HSI(img)
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10,5))
+plt.subplot(2,2,1), plt.title('原始图像')
+plt.imshow(rgb_img), plt.axis('off')
+plt.subplot(2,2,2), plt.title('Hue 分量')  #Hue通道
+plt.imshow(H,cmap='gray'), plt.axis('off')
+plt.subplot(2,2,3), plt.title('Saturation 分量')  #Saturation通道
+plt.imshow(S,cmap='gray'), plt.axis('off')
+plt.subplot(2,2,4), plt.title('Intensity 分量')  #Intensity通道
+plt.imshow(I,cmap='gray'), plt.axis('off')
+plt.show()
+
+
+
+#CMY模型各通道显示
+
+import cv2
+import matplotlib.pyplot as plt
+
+#读取图像
+img = cv2.imread('6.jpg')
+b,g,r = cv2.split(img)
+image= cv2.merge([r,g,b])
+
+#得到cmy模型各通道的值
+C = 255 - r
+M = 255 - g
+Y = 255 - b
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10,5))
+plt.subplot(2,2,1), plt.title('原始图像')
+plt.imshow(image), plt.axis('off')
+plt.subplot(2,2,2), plt.title('Cyan 通道')  #cyan通道
+plt.imshow(C,cmap='gray'), plt.axis('off')
+plt.subplot(2,2,3), plt.title('Mayenta 通道')  #mayenta通道
+plt.imshow(M,cmap='gray'), plt.axis('off')
+plt.subplot(2,2,4), plt.title('Yellow 通道')  #yellow通道
+plt.imshow(Y,cmap='gray'), plt.axis('off')
+plt.show()
+
+
+#图像补色
+
+import cv2
+import matplotlib.pyplot as plt
+
+#读取图像
+img = cv2.imread('6.3.jpg')
+b,g,r = cv2.split(img)
+image= cv2.merge([r,g,b])
+
+#补色变换
+r1=255-r
+g1=255-g
+b1=255-b
+image1= cv2.merge([r1,g1,b1])
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10,5))
+plt.subplot(1,2,1), plt.title('原始图像')
+plt.imshow(image), plt.axis('off')
+plt.subplot(1,2,2), plt.title('补色')
+plt.imshow(image1,cmap='gray'), plt.axis('off')
+plt.show()
+
+
+
+#调整图像的亮度
+
+import cv2
+import matplotlib.pyplot as plt
+from skimage import data, exposure, img_as_float
+from PIL import Image,ImageFilter
+
+figure=Image.open('6.3.jpg')  #读取图片
+image=img_as_float(figure)   #转换成指定格式
+
+low= exposure.adjust_gamma(image, 2)     #调暗  减少亮度
+high= exposure.adjust_gamma(image, 0.5)  #调亮  增加亮度
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+plt.figure(figsize=(10,5))
+plt.subplot(1,3,1), plt.title('原始图像')
+plt.imshow(image), plt.axis('off')
+plt.subplot(1,3,2), plt.title('降低图像亮度')
+plt.imshow(low), plt.axis('off')
+plt.subplot(1,3,3), plt.title('提高图像亮度')
+plt.imshow(high), plt.axis('off')
+plt.show()
+
+
+
+#改变图像的对比度
+
+from PIL import Image
+from PIL import ImageEnhance
+import cv2
+import matplotlib.pyplot as plt
+
+#读取图像
+img = Image.open('6.4.jpg')
+#改变图像对比度
+enh_con = ImageEnhance.Contrast(img)
+contrast1 = 1.8
+contrast2 = 0.5
+
+img_contrasted1 = enh_con.enhance(contrast1)  #增加对比度
+img_contrasted2 = enh_con.enhance(contrast2)  #减少对比度
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10,5))
+plt.subplot(1,3,1), plt.title('原始图像')
+plt.imshow(img), plt.axis('off')
+plt.subplot(1,3,2), plt.title('对比度增强')
+plt.imshow(img_contrasted1), plt.axis('off')
+plt.subplot(1,3,3), plt.title('对比度降低')
+plt.imshow(img_contrasted2), plt.axis('off')
+plt.show()
+
+
+
+
+#直方图处理
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+#读取图像
+img = cv2.imread("6.9.jpg", 1)
+b,g,r = cv2.split(img)
+rgb_img= cv2.merge([r,g,b])
+
+#在RGB空间直接对每个分量独立进行直方图均衡化
+# 彩色图像均衡化,需要分解通道 对每一个通道均衡化
+(b, g, r) = cv2.split(rgb_img)
+bH = cv2.equalizeHist(b)
+gH = cv2.equalizeHist(g)
+rH = cv2.equalizeHist(r)
+# 合并每一个通道
+result1 = cv2.merge((bH, gH, rH))
+
+# 进行颜色空间转换  RGB空间到HSV空间
+hsv_img = cv2.cvtColor(rgb_img, cv2.COLOR_BGR2HSV)
+(h, s, v) = cv2.split(hsv_img)
+#在HSV模型中对V分量进行直方图均衡化,保持H和S分量不变。
+vH = cv2.equalizeHist(v)
+# 合并通道
+result2 = cv2.merge((h, s, vH))
+# 进行颜色空间转换  HSV空间到RGB空间
+result3 = cv2.cvtColor(result2, cv2.COLOR_HSV2BGR)
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10,5))
+plt.subplot(1,3,1), plt.title('原始图像')
+plt.imshow(rgb_img), plt.axis('off')
+plt.subplot(1,3,2), plt.title('对RGB空间各分量直方图均衡化')  #
+plt.imshow(result1), plt.axis('off')
+plt.subplot(1,3,3), plt.title('对HSV空间的V分量直方图均衡化')  #
+plt.imshow(result3), plt.axis('off')
+plt.show()
+
+
+
+#图像平滑与尖锐化
+
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+
+#读取图像
+img = cv2.imread("6.5.jpg")
+b,g,r = cv2.split(img)
+rgb_img= cv2.merge([r,g,b])
+#图像平滑
+blur_img = cv2.blur(rgb_img, (5, 5))   #5*5平均模板
+#图像尖锐化
+kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], np.float32)
+sharp_img = cv2.filter2D(rgb_img, -1, kernel=kernel)
+
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10,5))
+plt.subplot(1,3,1), plt.title('原始图像')
+plt.imshow(rgb_img), plt.axis('off')
+plt.subplot(1,3,2), plt.title('图像平滑')
+plt.imshow(blur_img), plt.axis('off')
+plt.subplot(1,3,3), plt.title('图像锐化')
+plt.imshow(sharp_img), plt.axis('off')
+plt.show()
+
+
+#图像添加高斯噪声
+
+import random
+import numpy as np
+import cv2
+import matplotlib.pyplot as plt
+from skimage import io
+
+
+def gauss_noise(image):
+    img = image.astype(np.int16)  # 此步是为了避免像素点小于0，大于255的情况
+    mu = 0
+    sigma = 30
+    for i in range(img.shape[0]):
+        for j in range(img.shape[1]):
+            for k in range(img.shape[2]):
+                img[i, j, k] = img[i, j, k] + random.gauss(mu=mu, sigma=sigma)
+    img[img > 255] = 255
+    img[img < 0] = 0
+    img = img.astype(np.uint8)
+    return img
+
+
+#读取图像
+img = cv2.imread('6.5.jpg')
+b,g,r = cv2.split(img)
+image= cv2.merge([r,g,b])
+
+#添加高斯噪声
+noise_img = gauss_noise(image)
+image= cv2.merge([r,g,b])
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10,5))
+plt.subplot(1,2,1), plt.title('原始图像')
+plt.imshow(image), plt.axis('off')
+plt.subplot(1,2,2), plt.title('高斯噪声图像')
+plt.imshow(noise_img), plt.axis('off')
+plt.show()
+
+
+
+#图像添加椒盐噪声及各分量图的现实
+
+import random
+import numpy as np
+import cv2
+import matplotlib.pyplot as plt
+
+def salt_and_pepper_noise(img, proportion=0.05):
+    noise_img = img
+    height, width = noise_img.shape[0], noise_img.shape[1]
+    num = int(height * width * proportion)  # 多少个像素点添加椒盐噪声
+    for i in range(num):
+        w = random.randint(0, width - 1)
+        h = random.randint(0, height - 1)
+        if random.randint(0, 1) == 0:
+            noise_img[h, w] = 0
+        else:
+            noise_img[h, w] = 255
+    return noise_img
+
+#读取图像
+img = cv2.imread('6.5.jpg')
+b,g,r = cv2.split(img)
+image= cv2.merge([r,g,b])
+
+#添加椒盐噪声
+noise_img = salt_and_pepper_noise(image)
+image= cv2.merge([r,g,b])
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10,5))
+plt.subplot(1,2,1), plt.title('原始图像')
+plt.imshow(image), plt.axis('off')
+plt.subplot(1,2,2), plt.title('椒盐噪声图像')
+plt.imshow(noise_img), plt.axis('off')
+plt.show()
+
+
+#零均值、方差800的高斯噪声污染的红、绿和蓝分量
+
+
+import cv2
+import matplotlib.pyplot as plt
+
+#读取图像
+img = cv2.imread('6.7.jpg')   #零均值、方差800的高斯噪声污染的图像
+b,g,r = cv2.split(img)
+image= cv2.merge([r,g,b])
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10,5))
+plt.subplot(2,2,1), plt.title('原始零均值、方差800的高斯噪声污染的图像')
+plt.imshow(image), plt.axis('off')
+plt.subplot(2,2,2), plt.title('Red 通道')  #red通道
+plt.imshow(r,cmap='gray'), plt.axis('off')
+plt.subplot(2,2,3), plt.title('Green 通道')  #green通道
+plt.imshow(g,cmap='gray'), plt.axis('off')
+plt.subplot(2,2,4), plt.title('Blue 通道')  #blue通道
+plt.imshow(b,cmap='gray'), plt.axis('off')
+plt.show()
+
+
+
+#零均值、方差800的高斯噪声污染的彩色图像的HSI分量
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+#RGB图像转换为HSI图像代码
+def RGB2HSI(rgb_img):
+    # 保存原始图像的行列数
+    row = np.shape(rgb_img)[0]
+    col = np.shape(rgb_img)[1]
+    # 对原始图像进行复制
+    hsi_img = rgb_img.copy()
+    # 对图像进行通道拆分
+    B, G, R = cv2.split(rgb_img)
+    # 把通道归一化到[0,1]
+    [B, G, R] = [i / 255.0 for i in ([B, G, R])]
+    H = np.zeros((row, col))  # 定义H通道
+    I = (R + G + B) / 3.0  # 计算I通道
+    S = np.zeros((row, col))  # 定义S通道
+    for i in range(row):
+        den = np.sqrt((R[i] - G[i]) ** 2 + (R[i] - B[i]) * (G[i] - B[i]))
+        thetha = np.arccos(0.5 * (R[i] - B[i] + R[i] - G[i]) / den)  # 计算夹角
+        h = np.zeros(col)  # 定义临时数组
+        # den>0且G>=B的元素h赋值为thetha
+        h[B[i] <= G[i]] = thetha[B[i] <= G[i]]
+        # den>0且G<=B的元素h赋值为thetha
+        h[G[i] < B[i]] = 2 * np.pi - thetha[G[i] < B[i]]
+        # den<0的元素h赋值为0
+        h[den == 0] = 0
+        H[i] = h / (2 * np.pi)  # 弧度化后赋值给H通道
+    # 计算S通道
+    for i in range(row):
+        min = []
+        # 找出每组RGB值的最小值
+        for j in range(col):
+            arr = [B[i][j], G[i][j], R[i][j]]
+            min.append(np.min(arr))
+        min = np.array(min)
+        # 计算S通道
+        S[i] = 1 - min * 3 / (R[i] + B[i] + G[i])
+        # I为0的值直接赋值0
+        S[i][R[i] + B[i] + G[i] == 0] = 0
+    # 扩充到255以方便显示，一般H分量在[0,2pi]之间，S和I在[0,1]之间
+    hsi_img[:, :, 0] = H * 255
+    hsi_img[:, :, 1] = S * 255
+    hsi_img[:, :, 2] = I * 255
+    return H,S,I
+
+#读取图像
+img = cv2.imread('6.7.jpg')  #零均值、方差800的高斯噪声污染的图像
+b,g,r = cv2.split(img)
+rgb_img= cv2.merge([r,g,b])
+
+# 进行颜色空间转换
+H,S,I= RGB2HSI(img)
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10,5))
+plt.subplot(2,2,1), plt.title('零均值、方差800的高斯噪声污染的原始图像')
+plt.imshow(rgb_img), plt.axis('off')
+plt.subplot(2,2,2), plt.title('Hue 分量')  #Hue通道
+plt.imshow(H,cmap='gray'), plt.axis('off')
+plt.subplot(2,2,3), plt.title('Saturation 分量')  #Saturation通道
+plt.imshow(S,cmap='gray'), plt.axis('off')
+plt.subplot(2,2,4), plt.title('Intensity 分量')  #Intensity通道
+plt.imshow(I,cmap='gray'), plt.axis('off')
+plt.show()
+
+
+#彩色图像的噪声
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+#RGB图像转换为HSI图像代码
+def RGB2HSI(rgb_img):
+    # 保存原始图像的行列数
+    row = np.shape(rgb_img)[0]
+    col = np.shape(rgb_img)[1]
+    # 对原始图像进行复制
+    hsi_img = rgb_img.copy()
+    # 对图像进行通道拆分
+    B, G, R = cv2.split(rgb_img)
+    # 把通道归一化到[0,1]
+    [B, G, R] = [i / 255.0 for i in ([B, G, R])]
+    H = np.zeros((row, col))  # 定义H通道
+    I = (R + G + B) / 3.0  # 计算I通道
+    S = np.zeros((row, col))  # 定义S通道
+    for i in range(row):
+        den = np.sqrt((R[i] - G[i]) ** 2 + (R[i] - B[i]) * (G[i] - B[i]))
+        thetha = np.arccos(0.5 * (R[i] - B[i] + R[i] - G[i]) / den)  # 计算夹角
+        h = np.zeros(col)  # 定义临时数组
+        # den>0且G>=B的元素h赋值为thetha
+        h[B[i] <= G[i]] = thetha[B[i] <= G[i]]
+        # den>0且G<=B的元素h赋值为thetha
+        h[G[i] < B[i]] = 2 * np.pi - thetha[G[i] < B[i]]
+        # den<0的元素h赋值为0
+        h[den == 0] = 0
+        H[i] = h / (2 * np.pi)  # 弧度化后赋值给H通道
+    # 计算S通道
+    for i in range(row):
+        min = []
+        # 找出每组RGB值的最小值
+        for j in range(col):
+            arr = [B[i][j], G[i][j], R[i][j]]
+            min.append(np.min(arr))
+        min = np.array(min)
+        # 计算S通道
+        S[i] = 1 - min * 3 / (R[i] + B[i] + G[i])
+        # I为0的值直接赋值0
+        S[i][R[i] + B[i] + G[i] == 0] = 0
+    # 扩充到255以方便显示，一般H分量在[0,2pi]之间，S和I在[0,1]之间
+    hsi_img[:, :, 0] = H * 255
+    hsi_img[:, :, 1] = S * 255
+    hsi_img[:, :, 2] = I * 255
+    return H,S,I
+
+#读取图像
+img = cv2.imread('6.6.jpg')  #绿平面受椒盐噪声污染的RGB图像
+b,g,r = cv2.split(img)
+rgb_img= cv2.merge([r,g,b])
+
+# 进行颜色空间转换
+H,S,I= RGB2HSI(img)
+
+#用来正常显示中文标签
+plt.rcParams['font.sans-serif']=['SimHei']
+#显示图像
+plt.figure(figsize=(10,5))
+plt.subplot(2,2,1), plt.title('绿平面受椒盐噪声污染的原始RGB图像')
+plt.imshow(rgb_img), plt.axis('off')
+plt.subplot(2,2,2), plt.title('Hue 分量')  #Hue通道
+plt.imshow(H,cmap='gray'), plt.axis('off')
+plt.subplot(2,2,3), plt.title('Saturation 分量')  #Saturation通道
+plt.imshow(S,cmap='gray'), plt.axis('off')
+plt.subplot(2,2,4), plt.title('Intensity 分量')  #Intensity通道
+plt.imshow(I,cmap='gray'), plt.axis('off')
+plt.show()
+
+
+
+#彩色图像的压缩
+
+import cv2
+import matplotlib.pyplot as plt
+
+#读取图像
+img=cv2.imread("6.8.jpg",1)  #大小2.18MB
+#图像压缩
+cv2.imwrite("6.10.jpg",img,[cv2.IMWRITE_JPEG_QUALITY,30])    #大小58kb
+#在文件夹中查看压缩后的图片可以发现，图像大小大大减少
+
